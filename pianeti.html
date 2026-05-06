@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulatore di caduta nel Sistema Solare - versione completa</title>
+<style>
+:root{
+  --bg:#f4f6f8; --panel:#ffffff; --text:#111; --muted:#666; --border:#ccd3da;
+  --canvas:#eef3ff; --accent:#2155d6; --accent2:#d64545; --ok:#1f7a45;
+}
+body.dark{
+  --bg:#0f1115; --panel:#1b1f27; --text:#f2f2f2; --muted:#b8bec9; --border:#394252;
+  --canvas:#192235; --accent:#7ea6ff; --accent2:#ff7a7a; --ok:#73d39c;
+}
+*{box-sizing:border-box}
+body{
+  font-family:Arial,Helvetica,sans-serif; margin:0; padding:14px;
+  background:var(--bg); color:var(--text); transition:background .25s,color .25s;
+}
+h1,h2,h3{margin:.2rem 0 .7rem}
+h1{font-size:1.35rem}
+h2{font-size:1.1rem}
+h3{font-size:1rem}
+.panel{
+  background:var(--panel); border:1px solid var(--border); border-radius:14px;
+  padding:14px; margin:0 0 14px 0; box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
+.grid{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;
+}
+label{display:block; margin:.45rem 0 .2rem; font-size:.96rem}
+input, select, button{
+  font:inherit; width:100%; padding:10px 11px; margin-top:4px;
+  background:var(--panel); color:var(--text); border:1px solid var(--border);
+  border-radius:10px;
+}
+input[type="checkbox"]{width:auto; margin-right:8px; transform:scale(1.05)}
+.inline{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.inline button{width:auto}
+button{cursor:pointer}
+button:hover{filter:brightness(1.03)}
+.small{font-size:.88rem; color:var(--muted)}
+.resultsBox{
+  margin-top:10px; padding:10px; border:1px dashed var(--border); border-radius:10px;
+}
+.resultLine{padding:6px 0; border-bottom:1px solid var(--border)}
+.resultLine:last-child{border-bottom:none}
+.planetGrid{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:6px 14px; margin-top:10px;
+}
+.planetGrid label{margin:0}
+.canvasWrap{overflow:auto; border:1px solid var(--border); border-radius:12px; background:var(--canvas); padding:8px; margin-top:12px}
+canvas{display:block; max-width:100%}
+.legend{display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; font-size:.88rem}
+.legend span{display:inline-flex; align-items:center; gap:6px}
+.sw{width:12px; height:12px; border-radius:999px; display:inline-block}
+.note{padding:9px 11px; border-left:4px solid var(--accent); background:rgba(127,127,127,.07); border-radius:8px; margin-top:10px}
+.badge{display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid var(--border); font-size:.82rem}
+@media (max-width:600px){
+  body{padding:10px}
+  .panel{padding:12px}
+}
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="inline" style="justify-content:space-between">
+    <h1>Simulatore realistico di caduta nel Sistema Solare</h1>
+    <button onclick="toggleTheme()" style="width:auto">🌙 / ☀️ Cambia tema</button>
+  </div>
+  <div class="note">
+    Modalità completa: simulazione singola, confronto tra corpi selezionati, animazione, grafici
+    <span class="badge">tema scuro incluso</span>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Parametri generali</h2>
+  <div class="grid">
+    <div>
+      <label for="altezza">Altezza di caduta (m)</label>
+      <input id="altezza" type="number" min="0.01" step="0.01" value="100">
+    </div>
+    <div>
+      <label for="singleBody">Simulazione singola: scegli il corpo celeste</label>
+      <select id="singleBody"></select>
+    </div>
+  </div>
+
+  <label class="inline" style="margin-top:10px">
+    <input type="checkbox" id="attrito">
+    <span>Considera atmosfera / attrito</span>
+  </label>
+
+  <div id="dragBox" class="grid" style="display:none">
+    <div>
+      <label for="massa">Massa biglia (kg)</label>
+      <input id="massa" type="number" min="0.001" step="0.001" value="1">
+    </div>
+    <div>
+      <label for="diametro">Diametro biglia (cm)</label>
+      <input id="diametro" type="number" min="0.1" step="0.1" value="5">
+    </div>
+  </div>
+
+  <div class="small" style="margin-top:8px">
+    Senza attrito si usa la caduta libera ideale. Con attrito si usa una biglia sferica con densità atmosferica variabile con l’altezza.
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Simulazione singola</h2>
+  <div class="inline">
+    <button onclick="runSingle()" style="width:auto">Esegui simulazione singola</button>
+  </div>
+  <div id="singleResult" class="resultsBox"></div>
+  <div class="canvasWrap"><canvas id="singleCanvas" width="900" height="320"></canvas></div>
+</div>
+
+<div class="panel">
+  <h2>Confronto tra corpi celesti</h2>
+  <div class="inline">
+    <button onclick="selectAllBodies()" style="width:auto">Seleziona tutti</button>
+    <button onclick="deselectAllBodies()" style="width:auto">Deseleziona tutti</button>
+  </div>
+
+  <div id="planetList" class="planetGrid"></div>
+
+  <div class="inline" style="margin-top:10px">
+    <label><input type="checkbox" id="showVT" checked> Grafico tempo-velocità</label>
+    <label><input type="checkbox" id="showHT" checked> Grafico altezza-tempo</label>
+    <label><input type="checkbox" id="showG" checked> Scala visiva della gravità</label>
+  </div>
+
+  <div class="inline" style="margin-top:10px">
+    <button onclick="runComparison()" style="width:auto">Avvia confronto</button>
+  </div>
+
+  <div id="compareResult" class="resultsBox"></div>
+  <div id="compareAnim" class="canvasWrap" style="display:none">
+    <canvas id="compareCanvas" width="1200" height="420"></canvas>
+  </div>
+  <div id="vtWrap" class="canvasWrap" style="display:none">
+    <canvas id="vtCanvas" width="1200" height="380"></canvas>
+  </div>
+  <div id="htWrap" class="canvasWrap" style="display:none">
+    <canvas id="htCanvas" width="1200" height="380"></canvas>
+  </div>
+  <div id="gWrap" class="canvasWrap" style="display:none">
+    <canvas id="gCanvas" width="1200" height="300"></canvas>
+  </div>
+  <div id="legend" class="legend"></div>
+</div>
+
+<script>
+const bodies = {
+  "Sole":      {g:274.00, r:696340000, rho:0,     H:1},
+  "Mercurio":  {g:3.70,   r:2439700,   rho:0,     H:1},
+  "Venere":    {g:8.87,   r:6051800,   rho:65,    H:16000},
+  "Terra":     {g:9.81,   r:6371000,   rho:1.225, H:8500},
+  "Luna":      {g:1.62,   r:1737400,   rho:0,     H:1},
+  "Marte":     {g:3.71,   r:3389500,   rho:0.020, H:11000},
+  "Giove":     {g:24.79,  r:69911000,  rho:5,     H:20000},
+  "Saturno":   {g:10.44,  r:58232000,  rho:5,     H:20000},
+  "Urano":     {g:8.69,   r:25362000,  rho:5,     H:20000},
+  "Nettuno":   {g:11.15,  r:24622000,  rho:5,     H:20000}
+};
+
+const colors = ["#d64545","#2155d6","#1f7a45","#d67a21","#7b52d6","#0f9bb8","#cc2fa0","#6b7280","#aa5d00","#008866"];
+
+const singleBody = document.getElementById("singleBody");
+const planetList = document.getElementById("planetList");
+Object.keys(bodies).forEach((name, idx) => {
+  const opt = document.createElement("option");
+  opt.value = name; opt.textContent = name;
+  if(name === "Terra") opt.selected = true;
+  singleBody.appendChild(opt);
+
+  const lab = document.createElement("label");
+  const cb = document.createElement("input");
+  cb.type = "checkbox"; cb.className = "bodyCheck"; cb.value = name;
+  if(["Terra","Luna","Marte"].includes(name)) cb.checked = true;
+  lab.appendChild(cb);
+  lab.appendChild(document.createTextNode(" " + name));
+  planetList.appendChild(lab);
+});
+
+document.getElementById("attrito").addEventListener("change", () => {
+  document.getElementById("dragBox").style.display = document.getElementById("attrito").checked ? "grid" : "none";
+});
+
+function toggleTheme(){ document.body.classList.toggle("dark"); }
+function selectAllBodies(){ document.querySelectorAll(".bodyCheck").forEach(c => c.checked = true); }
+function deselectAllBodies(){ document.querySelectorAll(".bodyCheck").forEach(c => c.checked = false); }
+
+function getParams(){
+  const h = Math.max(0.01, parseFloat(document.getElementById("altezza").value) || 100);
+  const useDrag = document.getElementById("attrito").checked;
+  const m = Math.max(0.001, parseFloat(document.getElementById("massa").value) || 1);
+  const diam = Math.max(0.1, parseFloat(document.getElementById("diametro").value) || 5);
+  return {h, useDrag, m, diam};
+}
+function gAt(y, body){
+  const b = bodies[body];
+  return b.g * Math.pow(b.r / (b.r + y), 2);
+}
+function rhoAt(y, body){
+  const b = bodies[body];
+  return b.rho * Math.exp(-y / b.H);
+}
+function simulate(body, h, useDrag, m, diamCm){
+  const dt = 0.005;
+  const area = Math.PI * Math.pow((diamCm/100)/2, 2);
+  const Cd = 0.47;
+  let t = 0, y = 0, v = 0;
+  const ts = [0], ys = [0], vs = [0];
+  let limitGuard = 0;
+  while(y < h && limitGuard < 2000000){
+    const g = gAt(y, body);
+    let drag = 0;
+    if(useDrag && bodies[body].rho > 0){
+      const rho = rhoAt(y, body);
+      drag = 0.5 * rho * Cd * area * v * v;
+    }
+    const a = g - drag / m;
+    v += a * dt;
+    y += v * dt;
+    t += dt;
+    ts.push(t); ys.push(Math.min(y, h)); vs.push(v);
+    limitGuard++;
+  }
+  const g0 = bodies[body].g;
+  const vIdeal = Math.sqrt(2 * g0 * h);
+  let vt = null;
+  if(useDrag && bodies[body].rho > 0){
+    const rho0 = bodies[body].rho;
+    vt = Math.sqrt((2 * m * g0) / (Math.max(1e-9, rho0) * 0.47 * area));
+  }
+  return {
+    body, t, v, kmh: v*3.6, ts, ys, vs, vIdeal, vt
+  };
+}
+
+function setCanvasForDPR(canvas, w, h){
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return ctx;
+}
+function clearCanvas(ctx, w, h){
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--canvas');
+  ctx.fillRect(0,0,w,h);
+}
+function line(ctx, x1,y1,x2,y2, color, width=1){
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+}
+function circle(ctx, x,y,r,color){
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fillStyle=color; ctx.fill();
+}
+function drawAxes(ctx, x, y, w, h, xLabel, yLabel){
+  const text = getComputedStyle(document.body).getPropertyValue('--text');
+  const border = getComputedStyle(document.body).getPropertyValue('--border');
+  ctx.strokeStyle = border; ctx.lineWidth = 1;
+  ctx.strokeRect(x,y,w,h);
+  ctx.fillStyle = text; ctx.font = "14px Arial";
+  ctx.fillText(xLabel, x + w - 70, y + h + 24);
+  ctx.save();
+  ctx.translate(x - 34, y + 70);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText(yLabel, 0, 0);
+  ctx.restore();
+}
+function drawSingleAnimation(sim){
+  const canvas = document.getElementById("singleCanvas");
+  const w = Math.min(canvas.parentElement.clientWidth - 16, 980);
+  const h = 320;
+  const ctx = setCanvasForDPR(canvas, w, h);
+  clearCanvas(ctx, w, h);
+  const text = getComputedStyle(document.body).getPropertyValue('--text');
+  const border = getComputedStyle(document.body).getPropertyValue('--border');
+  ctx.fillStyle = text; ctx.font = "16px Arial";
+  ctx.fillText("Caduta su " + sim.body, 16, 24);
+  const shaftX = w/2, top = 38, bottom = h - 32;
+  line(ctx, shaftX, top, shaftX, bottom, border, 4);
+  let start = null;
+  function step(ts){
+    if(!start) start = ts;
+    const p = Math.min((ts - start) / (sim.t * 1000), 1);
+    clearCanvas(ctx, w, h);
+    ctx.fillStyle = text; ctx.font = "16px Arial";
+    ctx.fillText("Caduta su " + sim.body, 16, 24);
+    line(ctx, shaftX, top, shaftX, bottom, border, 4);
+    const y = top + p * (bottom - top - 8);
+    circle(ctx, shaftX, y, 10, "#d64545");
+    ctx.fillStyle = text; ctx.font = "14px Arial";
+    ctx.fillText("t = " + (p*sim.t).toFixed(2) + " s", 16, 52);
+    ctx.fillText("v = " + (sim.v * p).toFixed(2) + " m/s", 16, 74);
+    ctx.fillText("velocità finale = " + sim.v.toFixed(2) + " m/s  (" + sim.kmh.toFixed(1) + " km/h)", 16, 96);
+    ctx.fillText("altezza = " + getParams().h + " m", 16, 118);
+    if(p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+function runSingle(){
+  const {h, useDrag, m, diam} = getParams();
+  const body = singleBody.value;
+  const sim = simulate(body, h, useDrag, m, diam);
+  const box = document.getElementById("singleResult");
+  const bits = [
+    "<div class='resultLine'><b>" + body + "</b></div>",
+    "<div class='resultLine'>Tempo di caduta: <b>" + sim.t.toFixed(3) + " s</b></div>",
+    "<div class='resultLine'>Velocità d'impatto: <b>" + sim.v.toFixed(3) + " m/s</b> &nbsp; <b>(" + sim.kmh.toFixed(2) + " km/h)</b></div>",
+    "<div class='resultLine'>Velocità ideale senza attrito: <b>" + sim.vIdeal.toFixed(3) + " m/s</b></div>"
+  ];
+  if(useDrag && sim.vt) bits.push("<div class='resultLine'>Velocità terminale teorica iniziale: <b>" + sim.vt.toFixed(3) + " m/s</b> &nbsp; <b>(" + (sim.vt*3.6).toFixed(2) + " km/h)</b></div>");
+  box.innerHTML = bits.join("");
+  drawSingleAnimation(sim);
+}
+
+function runComparison(){
+  const chosen = [...document.querySelectorAll(".bodyCheck:checked")].map(x => x.value);
+  const box = document.getElementById("compareResult");
+  if(chosen.length === 0){
+    box.innerHTML = "Seleziona almeno un corpo celeste.";
+    document.getElementById("compareAnim").style.display = "none";
+    document.getElementById("vtWrap").style.display = "none";
+    document.getElementById("htWrap").style.display = "none";
+    document.getElementById("gWrap").style.display = "none";
+    document.getElementById("legend").innerHTML = "";
+    return;
+  }
+
+  const {h, useDrag, m, diam} = getParams();
+  const sims = chosen.map((body, i) => ({...simulate(body, h, useDrag, m, diam), color: colors[i % colors.length]}))
+                     .sort((a,b) => a.t - b.t);
+
+  box.innerHTML = sims.map(s =>
+    `<div class="resultLine"><b style="color:${s.color}">${s.body}</b> — tempo <b>${s.t.toFixed(3)} s</b> — velocità <b>${s.v.toFixed(3)} m/s</b> (<b>${s.kmh.toFixed(2)} km/h</b>)${(useDrag && s.vt) ? ` — v. terminale teorica <b>${s.vt.toFixed(2)} m/s</b>` : ""}</div>`
+  ).join("");
+
+  document.getElementById("legend").innerHTML = sims.map(s => `<span><i class="sw" style="background:${s.color}"></i>${s.body}</span>`).join("");
+
+  drawCompareAnimation(sims, h);
+  drawVTChart(sims);
+  drawHTChart(sims, h);
+  drawGScale(sims);
+}
+function drawCompareAnimation(sims, H){
+  const wrap = document.getElementById("compareAnim");
+  wrap.style.display = "block";
+  const canvas = document.getElementById("compareCanvas");
+  const width = Math.max(760, sims.length * 110);
+  const height = 420;
+  const ctx = setCanvasForDPR(canvas, width, height);
+  const text = getComputedStyle(document.body).getPropertyValue('--text');
+  const border = getComputedStyle(document.body).getPropertyValue('--border');
+  const maxT = Math.max(...sims.map(s => s.t));
+  const top = 48, bottom = height - 46;
+  let start = null;
+  function frame(ts){
+    if(!start) start = ts;
+    const elapsed = Math.min((ts - start) / 1000, maxT);
+    clearCanvas(ctx, width, height);
+    ctx.fillStyle = text; ctx.font = "16px Arial";
+    ctx.fillText("Simulazione comparativa della caduta", 14, 24);
+    ctx.fillText("Linea del tempo: " + elapsed.toFixed(2) + " s", 14, 46);
+
+    const x0 = 55, x1 = width - 22;
+    const progressX = x0 + (elapsed / maxT) * (x1 - x0);
+    line(ctx, x0, 54, x1, 54, border, 2);
+    line(ctx, progressX, 30, progressX, height - 18, "#ff9d00", 2);
+
+    sims.forEach((s, i) => {
+      const x = 70 + i * ((width - 100) / Math.max(1, sims.length));
+      line(ctx, x, top, x, bottom, border, 3);
+      const p = Math.min(elapsed / s.t, 1);
+      const y = top + p * (bottom - top - 10);
+      circle(ctx, x, y, 10, s.color);
+      ctx.fillStyle = text; ctx.font = "13px Arial";
+      ctx.fillText(s.body, x - 30, bottom + 18);
+      ctx.fillText(s.t.toFixed(2) + " s", x - 20, bottom + 35);
+    });
+    if(elapsed < maxT) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+function drawVTChart(sims){
+  const show = document.getElementById("showVT").checked;
+  const wrap = document.getElementById("vtWrap");
+  wrap.style.display = show ? "block" : "none";
+  if(!show) return;
+
+  const canvas = document.getElementById("vtCanvas");
+  const w = Math.max(760, sims.length * 120);
+  const h = 380;
+  const ctx = setCanvasForDPR(canvas, w, h);
+  clearCanvas(ctx, w, h);
+  const pad = {l:60, r:22, t:20, b:40};
+  drawAxes(ctx, pad.l, pad.t, w-pad.l-pad.r, h-pad.t-pad.b, "tempo", "velocità (m/s)");
+
+  const maxT = Math.max(...sims.map(s => Math.max(...s.ts)));
+  const maxV = Math.max(...sims.map(s => Math.max(...s.vs))) * 1.05 || 1;
+  sims.forEach(s => {
+    ctx.beginPath();
+    s.ts.forEach((t, i) => {
+      const x = pad.l + (t / maxT) * (w-pad.l-pad.r);
+      const y = pad.t + (1 - s.vs[i] / maxV) * (h-pad.t-pad.b);
+      if(i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.stroke();
+  });
+}
+function drawHTChart(sims, H){
+  const show = document.getElementById("showHT").checked;
+  const wrap = document.getElementById("htWrap");
+  wrap.style.display = show ? "block" : "none";
+  if(!show) return;
+
+  const canvas = document.getElementById("htCanvas");
+  const w = Math.max(760, sims.length * 120);
+  const h = 380;
+  const ctx = setCanvasForDPR(canvas, w, h);
+  clearCanvas(ctx, w, h);
+  const pad = {l:60, r:22, t:20, b:40};
+  drawAxes(ctx, pad.l, pad.t, w-pad.l-pad.r, h-pad.t-pad.b, "tempo", "altezza percorsa (m)");
+
+  const maxT = Math.max(...sims.map(s => Math.max(...s.ts)));
+  sims.forEach(s => {
+    ctx.beginPath();
+    s.ts.forEach((t, i) => {
+      const x = pad.l + (t / maxT) * (w-pad.l-pad.r);
+      const y = pad.t + (1 - s.ys[i] / H) * (h-pad.t-pad.b);
+      if(i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.stroke();
+  });
+}
+function drawGScale(sims){
+  const show = document.getElementById("showG").checked;
+  const wrap = document.getElementById("gWrap");
+  wrap.style.display = show ? "block" : "none";
+  if(!show) return;
+
+  const canvas = document.getElementById("gCanvas");
+  const w = Math.max(760, sims.length * 120);
+  const h = 300;
+  const ctx = setCanvasForDPR(canvas, w, h);
+  clearCanvas(ctx, w, h);
+  const text = getComputedStyle(document.body).getPropertyValue('--text');
+  const border = getComputedStyle(document.body).getPropertyValue('--border');
+  ctx.fillStyle = text; ctx.font = "16px Arial";
+  ctx.fillText("Scala visiva della gravità (rispetto alla Terra)", 14, 22);
+
+  const earthG = bodies["Terra"].g;
+  const maxG = Math.max(...sims.map(s => bodies[s.body].g));
+  const baseY = h - 42;
+  line(ctx, 50, baseY, w-20, baseY, border, 2);
+
+  sims.forEach((s, i) => {
+    const x = 70 + i * ((w - 110) / Math.max(1, sims.length));
+    const gh = bodies[s.body].g;
+    const barH = (gh / maxG) * 180;
+    ctx.fillStyle = s.color;
+    ctx.fillRect(x - 18, baseY - barH, 36, barH);
+    ctx.fillStyle = text;
+    ctx.font = "12px Arial";
+    ctx.fillText(s.body, x - 26, baseY + 18);
+    ctx.fillText(gh.toFixed(2) + " m/s²", x - 28, baseY + 34);
+    ctx.fillText((gh/earthG).toFixed(2) + " gₑ", x - 18, baseY - barH - 8);
+  });
+}
+
+runSingle();
+runComparison();
+</script>
+</body>
+</html>
